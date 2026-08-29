@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+
+source_list=()
+export_funcs=()
+export_vars=()
+export_scripts=()
+interactive=0
+debug_opt=0
+remote_exec=''
+payload=""
+
+show_help() {
+    cat <<EOF
+Usage: ${0##*/} [options] [--] [command...]
+
+Generates a base64-encoded remote payload to pass local functions,
+environment variables and scripts over SSH. (Not safe for secrets)
+
+Options:
+  -s, --source <file>   Source a local file (e.g., ~/.bash_aliases) before exporting.
+  -f, --func <name>     Export a specific local function by name.
+  -v, --var <name>      Export a specific local environment variable by name.
+  -x, --script <file>   Transfer a local script, place it in a remote temp dir, and add to \$PATH.
+  -i, --interactive     Force remote execution to spawn an interactive shell. (Prevent file cleanup)
+      --debug           Print the decoded payload string for dry-run debugging.
+  -h, --help            Display this help message and exit.
+
+Examples:
+  # Start an interactive shell pre-loaded with local function and variable
+  ssh -t user@host "\$(${0##*/} -f my_func -v LESS -i)"
+
+  # Execute a local function remotely with options and arguments
+  ssh -t user@host "\$(${0##*/} -s ~/.bash_aliases -f deploy_app -- deploy_app production)"
+EOF
+}
+
+if (( $# == 0 )); then
+    show_help
+    exit 1
+fi
+
+while (( $# > 0 )); do
+    opt_val=''
+    case "$1" in
+        -h|--help) show_help; exit 0 ;;
+        --source=*) opt_val="${1#*=}" ;&
+        -s|--source)
+            if [[ -z $opt_val ]]; then opt_val="$2"; shift; fi
+            source_list+=("$opt_val")
+            shift ;;
+        --func=*) opt_val="${1#*=}" ;&
+        -f|--func)
+            if [[ -z $opt_val ]]; then opt_val="$2"; shift; fi
+            export_funcs+=("$opt_val")
+            shift ;;
+        --var=*) opt_val="${1#*=}" ;&
+        -v|--var)
+            if [[ -z $opt_val ]]; then opt_val="$2"; shift; fi
+            export_vars+=("$opt_val")
+            shift ;;
+        --script=*) opt_val="${1#*=}" ;&
+        -x|--script)
+            if [[ -z $opt_val ]]; then opt_val="$2"; shift; fi
+            export_scripts+=("$opt_val")
+            shift ;;
+        -i|--interactive) interactive=1; shift ;;
+        --debug) debug_opt=1; shift ;;
+        --) shift; break ;;
+        *) break ;;
+    esac
+done
+
+# source list
+for src in "${source_list[@]}"; do
+    if [[ -r $src ]]; then
+        source "$src"
+    else
+        printf 'Warning: Source file "%s" not found or unreadable.\n' "$src" >&2
+    fi
+done
+
+# script list
+if (( ${#export_scripts[@]} > 0 )); then
+    payload+='_remote_tmp=$(mktemp -d /tmp/sshenv.XXXXXX)'$'\n'
+    payload+='trap '\''rm -rf "$_remote_tmp"'\'' EXIT'$'\n'
+    payload+='export PATH="$_remote_tmp:$PATH"'$'\n'
+
+    for script in "${export_scripts[@]}"; do
+        if [[ -r $script ]]; then
+            script_name=$(basename -- "$script")
+            script_b64=$(base64 -w 0 < "$script")
+            payload+="base64 -d << 'EOF_B64' > \"\$_remote_tmp/${script_name}\""$'\n'
+            payload+="${script_b64}"$'\n'
+            payload+="EOF_B64"$'\n'
+            payload+="chmod +x \"\$_remote_tmp/${script_name}\""$'\n'
+        else
+            printf 'Warning: Script file "%s" not found or unreadable.\n' "$script" >&2
+        fi
+    done
+fi
+
+# function list
+for func in "${export_funcs[@]}"; do
+    if declare -f "$func" >/dev/null 2>&1; then
+        payload+="$(declare -f "$func")"$'\n'
+        payload+="export -f $func"$'\n'
+    else
+        printf 'Warning: Function "%s" not found locally.\n' "$func" >&2
+    fi
+done
+
+# variable list
+for var in "${export_vars[@]}"; do
+    if [[ -v "$var" ]]; then
+        payload+="$(declare -p "$var")"$'\n'
+    else
+        printf 'Warning: Variable "%s" is unset.\n' "$var" >&2
+    fi
+done
+
+# caboose command
+if (( $# > 0 )); then
+    remote_exec="$*"
+    if [[ "${remote_exec: -1}" != ";" ]]; then
+        remote_exec+=";"
+    fi
+fi
+if (( interactive > 0 )); then
+    remote_exec+="exec bash"
+fi
+
+payload+="${remote_exec}"$'\n'
+
+encoded=$(printf '%s' "$payload" | gzip -cf9 | base64 -w 0)
+
+if (( debug_opt > 0 )); then
+    printf '%s\n' "$payload"
+    b64encoded=$(printf '%s' "$payload" | base64 -w 0)
+    printf 'Original payload size: %s'$'\n' "$(wc -c <<< "$b64encoded" | numfmt --field 1 --to iec)"
+    printf 'Encoded payload size: %s'$'\n' "$(wc -c <<< "$encoded" | numfmt --field 1 --to iec)"
+    exit 0
+fi
+
+printf "bash -c 'source <(base64 -d <<< %s | gzip -dc)'\n" "$encoded"
