@@ -20,8 +20,8 @@ Options:
   -s, --source <file>   Source a local file (e.g., ~/.bash_aliases) before exporting.
   -f, --func <name>     Export a specific local function by name.
   -v, --var <name>      Export a specific local environment variable by name.
-  -x, --script <file>   Transfer a local script, place it in a remote temp dir, and add to \$PATH.
-  -i, --interactive     Force remote execution to spawn an interactive shell. (Prevent file cleanup)
+  -x, --script <file>   Transfer a local script to a remote temp dir, and add to \$PATH.
+  -i, --interactive     Force remote execution to spawn an interactive shell.
       --debug           Print the decoded payload string for dry-run debugging.
   -h, --help            Display this help message and exit.
 
@@ -126,7 +126,11 @@ if (( $# > 0 )); then
     fi
 fi
 if (( interactive > 0 )); then
-    remote_exec+="exec bash"
+    # reduce memory usage if nothing to cleanup
+    if (( ${#export_scripts[@]} == 0 )); then 
+        remote_exec+="exec "
+    fi
+    remote_exec+="bash"
 fi
 
 payload+="${remote_exec}"$'\n'
