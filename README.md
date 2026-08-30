@@ -29,4 +29,8 @@ Examples:
 
   # Execute a local function remotely with options and arguments
   ssh -t user@host "$(cosse -s ~/.bash_aliases -f deploy_app -- deploy_app production)"
+
+  # Use aliases for repeated operations
+  alias sshenv-base="cosse --source='${HOME}/.bash_aliases' --func={l-size,field,total,avg,max,min,max-line,min-line,from-iec,to-iec,showargs}"
+  ssh -t user@host "$(sshenv-base -i)"
 ```
