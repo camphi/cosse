@@ -140,8 +140,9 @@ encoded=$(printf '%s' "$payload" | gzip -cf9 | base64 -w 0)
 if (( debug_opt > 0 )); then
     printf '%s\n' "$payload"
     b64encoded=$(printf '%s' "$payload" | base64 -w 0)
-    printf 'Original payload size: %s'$'\n' "$(wc -c <<< "$b64encoded" | numfmt --field 1 --to iec)"
-    printf 'Encoded payload size: %s'$'\n' "$(wc -c <<< "$encoded" | numfmt --field 1 --to iec)"
+    printf 'Original payload size: %s'$'\n' "$(wc -c <<< "$payload" | numfmt --to iec)"
+    printf 'Base64 payload size: %s'$'\n' "$(wc -c <<< "$b64encoded" | numfmt --to iec)"
+    printf 'Gzip payload size: %s'$'\n' "$(wc -c <<< "$encoded" | numfmt --to iec)"
     exit 0
 fi
 
