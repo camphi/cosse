@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 
+shopt -s expand_aliases
+
 source_list=()
+export_aliases=()
 export_funcs=()
 export_vars=()
 export_scripts=()
@@ -18,6 +21,7 @@ environment variables and scripts over SSH. (Not safe for secrets)
 
 Options:
   -s, --source <file>   Source a local file (e.g., ~/.bash_aliases) before exporting.
+  -a, --alias <name>    Export a specific alias by name.
   -f, --func <name>     Export a specific local function by name.
   -v, --var <name>      Export a specific local environment variable by name.
   -x, --script <file>   Transfer a local script to a remote temp dir, and add to \$PATH.
@@ -51,6 +55,11 @@ while (( $# > 0 )); do
         -s|--source)
             if [[ -z $opt_val ]]; then opt_val="$2"; shift; fi
             source_list+=("$opt_val")
+            shift ;;
+        --alias=*) opt_val="${1#*=}" ;&
+        -a|--alias)
+            if [[ -z $opt_val ]]; then opt_val="$2"; shift; fi
+            export_aliases+=("$opt_val")
             shift ;;
         --func=*) opt_val="${1#*=}" ;&
         -f|--func)
@@ -99,6 +108,18 @@ if (( ${#export_scripts[@]} > 0 )); then
             payload+="chmod +x \"\$_remote_tmp/${script_name}\""$'\n'
         else
             printf 'Warning: Script file "%s" not found or unreadable.\n' "$script" >&2
+        fi
+    done
+fi
+
+# alias list
+if (( ${#export_aliases[@]} > 0 )); then
+    payload+='shopt -s expand_aliases'$'\n'
+    for aka in "${export_aliases[@]}"; do
+        if aka_def=$(alias "$aka" 2>/dev/null); then
+            payload+="$aka_def"$'\n'
+        else
+            printf 'Warning: Alias "%s" not found locally.\n' "$aka" >&2
         fi
     done
 fi
