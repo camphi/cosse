@@ -35,3 +35,9 @@ Examples:
   alias sshenv-base="cosse --source='${HOME}/.bash_aliases' --alias={l,ll,la} --func={l-size,field,total,avg,max,min,max-line,min-line,from-iec,to-iec,showargs}"
   ssh -t user@host "$(sshenv-base -i)"
 ```
+
+
+# Test
+```
+./test/bats/bin/bats test
+```

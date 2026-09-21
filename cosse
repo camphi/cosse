@@ -7,17 +7,19 @@ export_aliases=()
 export_funcs=()
 export_vars=()
 export_scripts=()
+source_exec='source'
 interactive=0
+login=0
 debug_opt=0
-remote_exec=''
 payload=""
+failure=0
 
 show_help() {
     cat <<EOF
 Usage: ${0##*/} [options] [--] [command...]
 
 Generates a base64-encoded remote payload to pass local functions,
-environment variables and scripts over SSH. (Not safe for secrets)
+environment variables and scripts over SSH. (Bash) (Not safe for secrets)
 
 Options:
   -s, --source <file>   Source a local file (e.g., ~/.bash_aliases) before exporting.
@@ -25,7 +27,8 @@ Options:
   -f, --func <name>     Export a specific local function by name.
   -v, --var <name>      Export a specific local environment variable by name.
   -x, --script <file>   Transfer a local script to a remote temp dir, and add to \$PATH.
-  -i, --interactive     Force remote execution to spawn an interactive shell.
+  -i, --interactive     Force remote bash to spawn an interactive shell.
+  -l, --login           Force remote bash to source profile files.
       --debug           Print the decoded payload string for dry-run debugging.
   -h, --help            Display this help message and exit.
 
@@ -44,7 +47,7 @@ EOF
 
 if (( $# == 0 )); then
     show_help
-    exit 1
+    exit 0
 fi
 
 while (( $# > 0 )); do
@@ -77,11 +80,26 @@ while (( $# > 0 )); do
             export_scripts+=("$opt_val")
             shift ;;
         -i|--interactive) interactive=1; shift ;;
+        -l|--login) login=1; shift ;;
         --debug) debug_opt=1; shift ;;
         --) shift; break ;;
         *) break ;;
     esac
 done
+
+# bash login
+if (( login > 0 )); then
+    # https://man7.org/linux/man-pages/man1/bash.1.html#INVOCATION
+    payload+="[[ -f /etc/profile ]] && source /etc/profile"$'\n'
+    payload+="[[ -f ~/.bash_profile ]] && source ~/.bash_profile || { [[ -f ~/.bash_login ]] && source ~/.bash_login; } || { [[ -f ~/.profile ]] && source ~/.profile; }"$'\n'
+fi
+
+# bash interactive
+if (( interactive > 0 )); then
+    # https://man7.org/linux/man-pages/man1/bash.1.html#INVOCATION
+    payload+="[[ -f ~/.bashrc ]] && source ~/.bashrc"$'\n'
+    source_exec='exec bash --rcfile'
+fi
 
 # source list
 for src in "${source_list[@]}"; do
@@ -89,6 +107,7 @@ for src in "${source_list[@]}"; do
         source "$src"
     else
         printf 'Warning: Source file "%s" not found or unreadable.\n' "$src" >&2
+        failure=1
     fi
 done
 
@@ -108,6 +127,7 @@ if (( ${#export_scripts[@]} > 0 )); then
             payload+="chmod +x \"\$_remote_tmp/${script_name}\""$'\n'
         else
             printf 'Warning: Script file "%s" not found or unreadable.\n' "$script" >&2
+            failure=1
         fi
     done
 fi
@@ -120,6 +140,7 @@ if (( ${#export_aliases[@]} > 0 )); then
             payload+="$aka_def"$'\n'
         else
             printf 'Warning: Alias "%s" not found locally.\n' "$aka" >&2
+            failure=1
         fi
     done
 fi
@@ -131,6 +152,7 @@ for func in "${export_funcs[@]}"; do
         payload+="export -f $func"$'\n'
     else
         printf 'Warning: Function "%s" not found locally.\n' "$func" >&2
+        failure=1
     fi
 done
 
@@ -140,25 +162,16 @@ for var in "${export_vars[@]}"; do
         payload+="$(declare -p "$var")"$'\n'
     else
         printf 'Warning: Variable "%s" is unset.\n' "$var" >&2
+        failure=1
     fi
 done
 
+(( failure > 0 )) && exit 1
+
 # caboose command
 if (( $# > 0 )); then
-    remote_exec="$*"
-    if [[ "${remote_exec: -1}" != ";" ]]; then
-        remote_exec+=";"
-    fi
+    payload+="$*"$'\n'
 fi
-if (( interactive > 0 )); then
-    # reduce memory usage if nothing to cleanup
-    if (( ${#export_scripts[@]} == 0 )); then 
-        remote_exec+="exec "
-    fi
-    remote_exec+="bash"
-fi
-
-payload+="${remote_exec}"$'\n'
 
 encoded=$(printf '%s' "$payload" | gzip -cf9 | base64 -w 0)
 
@@ -171,4 +184,4 @@ if (( debug_opt > 0 )); then
     exit 0
 fi
 
-printf "bash -c 'source <(base64 -d <<< %s | gzip -dc)'\n" "$encoded"
+printf "%s <(base64 -d <<< %s | gzip -dc)"$'\n' "$source_exec" "$encoded"

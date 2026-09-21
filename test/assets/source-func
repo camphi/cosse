@@ -1,0 +1,4 @@
+# only function
+fn_1() {
+    echo 'fn_1 succeded'
+}

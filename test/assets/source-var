@@ -1,0 +1,2 @@
+# only var
+export VAR_1='VAR_1 succeded'
