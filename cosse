@@ -92,6 +92,7 @@ if (( login > 0 )); then
     # https://man7.org/linux/man-pages/man1/bash.1.html#INVOCATION
     payload+="[[ -f /etc/profile ]] && source /etc/profile"$'\n'
     payload+="[[ -f ~/.bash_profile ]] && source ~/.bash_profile || { [[ -f ~/.bash_login ]] && source ~/.bash_login; } || { [[ -f ~/.profile ]] && source ~/.profile; }"$'\n'
+    # trap '[[ -f ~/.bash_logout ]] && source ~/.bash_logout;' added later
 fi
 
 # bash interactive
@@ -114,7 +115,7 @@ done
 # script list
 if (( ${#export_scripts[@]} > 0 )); then
     payload+='_remote_tmp=$(mktemp -d /tmp/sshenv.XXXXXX)'$'\n'
-    payload+='trap '\''rm -rf "$_remote_tmp"'\'' EXIT'$'\n'
+    # payload+='trap '\''rm -rf "$_remote_tmp"'\'' EXIT'$'\n' added later
     payload+='export PATH="$_remote_tmp:$PATH"'$'\n'
 
     for script in "${export_scripts[@]}"; do
@@ -131,6 +132,21 @@ if (( ${#export_scripts[@]} > 0 )); then
         fi
     done
 fi
+
+# trap logic
+if (( login > 0 )) || (( ${#export_scripts[@]} > 0 )); then
+    trap_code='trap '\'
+    # https://man7.org/linux/man-pages/man1/bash.1.html#INVOCATION
+    if (( login > 0 )); then
+        trap_code+='[[ -f ~/.bash_logout ]] && source ~/.bash_logout;'
+    fi
+    if (( ${#export_scripts[@]} > 0 )); then
+        trap_code+='rm -rf "$_remote_tmp"'
+    fi
+    trap_code+=\'' EXIT'
+    payload+="$trap_code"$'\n'
+fi
+
 
 # alias list
 if (( ${#export_aliases[@]} > 0 )); then
@@ -166,8 +182,6 @@ for var in "${export_vars[@]}"; do
     fi
 done
 
-(( failure > 0 )) && exit 1
-
 # caboose command
 if (( $# > 0 )); then
     payload+="$*"$'\n'
@@ -183,5 +197,7 @@ if (( debug_opt > 0 )); then
     printf 'Gzip payload size: %s'$'\n' "$(wc -c <<< "$encoded" | numfmt --to iec)"
     exit 0
 fi
+
+(( failure > 0 )) && exit 1
 
 printf "%s <(base64 -d <<< %s | gzip -dc)"$'\n' "$source_exec" "$encoded"
