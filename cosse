@@ -40,8 +40,8 @@ Examples:
   ssh -t user@host "\$(${0##*/} -s ~/.bash_aliases -f deploy_app -- deploy_app production)"
 
   # Use aliases for repeated operations
-  alias sshenv-base="${0##*/} --source='\${HOME}/.bash_aliases' --func={l-size,field,total,avg,max,min,max-line,min-line,from-iec,to-iec,showargs}"
-  ssh -t user@host "\$(sshenv-base -i)"
+  alias sshenv-base="${0##*/} --source='\${HOME}/.bash_aliases' --alias={l,ll,la} --func={l-size,field,total,avg,max,min,max-line,min-line,from-iec,to-iec,showargs}"
+  ssh -t user@host "\$(sshenv-base -l -i)"
 EOF
 }
 

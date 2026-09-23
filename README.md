@@ -11,16 +11,17 @@ ln -s ~/.cosse/cosse ~/bin/
 ```
 Usage: cosse [options] [--] [command...]
 
-Generates a base64-encoded 'bash -c' remote payload to pass local functions,
-environment variables and scripts over SSH. (Not safe for secrets)
+Generates a base64-encoded remote payload to pass local functions,
+environment variables and scripts over SSH. (Bash) (Not safe for secrets)
 
 Options:
   -s, --source <file>   Source a local file (e.g., ~/.bash_aliases) before exporting.
   -a, --alias <name>    Export a specific alias by name.
   -f, --func <name>     Export a specific local function by name.
   -v, --var <name>      Export a specific local environment variable by name.
-  -x, --script <file>   Transfer a local script to remote temp dir, and add to $PATH.
-  -i, --interactive     Force remote execution to spawn an interactive shell.
+  -x, --script <file>   Transfer a local script to a remote temp dir, and add to $PATH.
+  -i, --interactive     Force remote bash to spawn an interactive shell.
+  -l, --login           Force remote bash to source profile files.
       --debug           Print the decoded payload string for dry-run debugging.
   -h, --help            Display this help message and exit.
 
@@ -33,9 +34,8 @@ Examples:
 
   # Use aliases for repeated operations
   alias sshenv-base="cosse --source='${HOME}/.bash_aliases' --alias={l,ll,la} --func={l-size,field,total,avg,max,min,max-line,min-line,from-iec,to-iec,showargs}"
-  ssh -t user@host "$(sshenv-base -i)"
+  ssh -t user@host "$(sshenv-base -l -i)"
 ```
-
 
 # Test
 ```
