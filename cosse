@@ -147,7 +147,6 @@ if (( login > 0 )) || (( ${#export_scripts[@]} > 0 )); then
     payload+="$trap_code"$'\n'
 fi
 
-
 # alias list
 if (( ${#export_aliases[@]} > 0 )); then
     payload+='shopt -s expand_aliases'$'\n'
