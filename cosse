@@ -51,38 +51,35 @@ if (( $# == 0 )); then
 fi
 
 while (( $# > 0 )); do
-    opt_val=''
     case "$1" in
         -h|--help) show_help; exit 0 ;;
-        --source=*) opt_val="${1#*=}" ;&
-        -s|--source)
-            if [[ -z $opt_val ]]; then opt_val="$2"; shift; fi
-            source_list+=("$opt_val")
-            shift ;;
-        --alias=*) opt_val="${1#*=}" ;&
-        -a|--alias)
-            if [[ -z $opt_val ]]; then opt_val="$2"; shift; fi
-            export_aliases+=("$opt_val")
-            shift ;;
-        --func=*) opt_val="${1#*=}" ;&
-        -f|--func)
-            if [[ -z $opt_val ]]; then opt_val="$2"; shift; fi
-            export_funcs+=("$opt_val")
-            shift ;;
-        --var=*) opt_val="${1#*=}" ;&
-        -v|--var)
-            if [[ -z $opt_val ]]; then opt_val="$2"; shift; fi
-            export_vars+=("$opt_val")
-            shift ;;
-        --script=*) opt_val="${1#*=}" ;&
-        -x|--script)
-            if [[ -z $opt_val ]]; then opt_val="$2"; shift; fi
-            export_scripts+=("$opt_val")
-            shift ;;
+        # local sources
+        -s=*|--source=*) source_list+=("${1#*=}"); shift ;;
+        -s|--source) source_list+=("$2"); shift 2 ;;
+        -s?*) source_list+=("${1#-?}"); shift ;;
+        # alias
+        -a=*|--alias=*) export_aliases+=("${1#*=}"); shift ;;
+        -a|--alias) export_aliases+=("$2"); shift 2 ;;
+        -a?*) export_aliases+=("${1#-?}"); shift ;;
+        # function
+        -f=*|--func=*) export_funcs+=("${1#*=}"); shift ;;
+        -f|--func) export_funcs+=("$2"); shift 2 ;;
+        -f?*) export_funcs+=("${1#-?}"); shift ;;
+        # var
+        -v=*|--var=*) export_vars+=("${1#*=}"); shift ;;
+        -v|--var) export_vars+=("$2"); shift 2 ;;
+        -v?*) export_vars+=("${1#-?}"); shift ;;
+        # script
+        -x=*|--script=*) export_scripts+=("${1#*=}"); shift ;;
+        -x|--script) export_scripts+=("$2"); shift 2 ;;
+        -x?*) export_scripts+=("${1#-?}"); shift ;;
+        # flags
         -i|--interactive) interactive=1; shift ;;
         -l|--login) login=1; shift ;;
         --debug) debug_opt=1; shift ;;
         --) shift; break ;;
+        # compounded options segmentation
+        -[!-]?*) opt="$1"; shift; set -- "${opt:0:2}" "-${opt:2}" "$@" ;;
         *) break ;;
     esac
 done

@@ -44,7 +44,19 @@ teardown() {
 }
 
 @test "source local alias, wrong alias called" {
-    run --separate-stderr --separate-stderr cosse --source "${ASSESTS_DIR}/source-alias" --alias aka_fail_1
+    run --separate-stderr cosse --source "${ASSESTS_DIR}/source-alias" --alias aka_fail_1
+
+    assert_failure
+    assert_stderr --partial 'Warning: Alias'
+    refute_output --partial '<(base64 -d <<< '
+
+    run --separate-stderr cosse --source "${ASSESTS_DIR}/source-alias" --alias=
+
+    assert_failure
+    assert_stderr --partial 'Warning: Alias'
+    refute_output --partial '<(base64 -d <<< '
+
+    run --separate-stderr cosse --source "${ASSESTS_DIR}/source-alias" -aaka_fail_1
 
     assert_failure
     assert_stderr --partial 'Warning: Alias'
@@ -64,6 +76,18 @@ teardown() {
     assert_failure
     assert_stderr --partial 'Warning: Function'
     refute_output --partial '<(base64 -d <<< '
+
+    run --separate-stderr cosse --source "${ASSESTS_DIR}/source-func" --func=
+    
+    assert_failure
+    assert_stderr --partial 'Warning: Function'
+    refute_output --partial '<(base64 -d <<< '
+
+    run --separate-stderr cosse --source "${ASSESTS_DIR}/source-func" -ffn_wrong
+    
+    assert_failure
+    assert_stderr --partial 'Warning: Function'
+    refute_output --partial '<(base64 -d <<< '
 }
 
 @test "source local var source file" {
@@ -74,6 +98,16 @@ teardown() {
 
 @test "source local var, wrong var" {
     run --separate-stderr cosse --source "${ASSESTS_DIR}/source-var" --var VAR_wrong
+    
+    assert_failure
+    assert_stderr --partial 'Warning: Variable'
+    refute_output --partial '<(base64 -d <<< '
+    run --separate-stderr cosse --source "${ASSESTS_DIR}/source-var" -v=
+    
+    assert_failure
+    assert_stderr --partial 'Warning: Variable'
+    refute_output --partial '<(base64 -d <<< '
+    run --separate-stderr cosse --source "${ASSESTS_DIR}/source-var" -vVAR_wrong
     
     assert_failure
     assert_stderr --partial 'Warning: Variable'
@@ -153,6 +187,14 @@ teardown() {
     refute_output --partial 'new PID ::'"${current_PID}"'::'
     assert_output --regexp 'new PID ::[0-9]+::'
     assert_output --partial 'Connection to localhost closed.'
+}
+
+@test "compound options" {
+    run cosse -li --debug
+
+    assert_success
+    assert_output --partial '&& source /etc/profile'
+    assert_output --partial '&& source ~/.bashrc'
 }
 
 @test "remote ssh full" {
