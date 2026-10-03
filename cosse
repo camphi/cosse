@@ -174,7 +174,6 @@ for var in "${export_vars[@]}"; do
         payload+="$(declare -p "$var")"$'\n'
     else
         printf 'Warning: Variable "%s" is unset.\n' "$var" >&2
-        failure=1
     fi
 done
 

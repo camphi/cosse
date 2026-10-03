@@ -99,19 +99,15 @@ teardown() {
 @test "source local var, wrong var" {
     run --separate-stderr cosse --source "${ASSESTS_DIR}/source-var" --var VAR_wrong
     
-    assert_failure
     assert_stderr --partial 'Warning: Variable'
-    refute_output --partial '<(base64 -d <<< '
+
     run --separate-stderr cosse --source "${ASSESTS_DIR}/source-var" -v=
     
-    assert_failure
     assert_stderr --partial 'Warning: Variable'
-    refute_output --partial '<(base64 -d <<< '
+
     run --separate-stderr cosse --source "${ASSESTS_DIR}/source-var" -vVAR_wrong
     
-    assert_failure
     assert_stderr --partial 'Warning: Variable'
-    refute_output --partial '<(base64 -d <<< '
 }
 
 @test "display help on -h|--help" {
