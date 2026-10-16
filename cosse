@@ -45,7 +45,7 @@ Examples:
 EOF
 }
 
-if (( $# == 0 )); then
+if (( $# == 0 )) && [[ -t 0 ]]; then
     show_help
     exit 0
 fi
@@ -180,6 +180,10 @@ done
 # caboose command
 if (( $# > 0 )); then
     payload+="$*"$'\n'
+fi
+
+if ! [[ -t 0 ]]; then
+    payload+=$(cat)$'\n'
 fi
 
 encoded=$(printf '%s' "$payload" | gzip -cf9 | base64 -w 0)

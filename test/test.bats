@@ -23,7 +23,7 @@ teardown() {
 
 @test "can run empty" {
     run cosse
- 
+
     assert_success
     assert_output --partial 'Generates a base64-encoded remote payload'
 }
@@ -65,26 +65,26 @@ teardown() {
 
 @test "source local function source file" {
     run cosse --source "${ASSESTS_DIR}/source-func" --func fn_1
-    
+
     assert_success
     refute_output --partial 'Warning: Function'
 }
 
 @test "source local function, wrong func called" {
     run --separate-stderr cosse --source "${ASSESTS_DIR}/source-func" --func fn_wrong
-    
+
     assert_failure
     assert_stderr --partial 'Warning: Function'
     refute_output --partial '<(base64 -d <<< '
 
     run --separate-stderr cosse --source "${ASSESTS_DIR}/source-func" --func=
-    
+
     assert_failure
     assert_stderr --partial 'Warning: Function'
     refute_output --partial '<(base64 -d <<< '
 
     run --separate-stderr cosse --source "${ASSESTS_DIR}/source-func" -ffn_wrong
-    
+
     assert_failure
     assert_stderr --partial 'Warning: Function'
     refute_output --partial '<(base64 -d <<< '
@@ -92,21 +92,21 @@ teardown() {
 
 @test "source local var source file" {
     run cosse --source "${ASSESTS_DIR}/source-var" --var VAR_1
-    
+
     assert_success
 }
 
 @test "source local var, wrong var" {
     run --separate-stderr cosse --source "${ASSESTS_DIR}/source-var" --var VAR_wrong
-    
+
     assert_stderr --partial 'Warning: Variable'
 
     run --separate-stderr cosse --source "${ASSESTS_DIR}/source-var" -v=
-    
+
     assert_stderr --partial 'Warning: Variable'
 
     run --separate-stderr cosse --source "${ASSESTS_DIR}/source-var" -vVAR_wrong
-    
+
     assert_stderr --partial 'Warning: Variable'
 }
 
@@ -129,7 +129,7 @@ teardown() {
     assert_output --partial 'Original payload size'
     assert_output --partial 'Base64 payload size'
     assert_output --partial 'Gzip payload size'
-    
+
 }
 
 @test "deploy and cleanup script in remote ssh" {
@@ -160,7 +160,7 @@ teardown() {
 }
 
 @test "echo VAR in remote ssh" {
-    run bash -c 'ssh localhost "$(cosse --source "'${ASSESTS_DIR}'/source-var" --var VAR_1 "echo \$VAR_1")"'
+    run bash -c 'ssh localhost "$(cosse --source "'${ASSESTS_DIR}'/source-var" --var VAR_1 -- echo \$VAR_1)"'
     assert_success
     assert_output 'VAR_1 succeded'
     refute_output --partial 'Connection to localhost closed'
@@ -193,8 +193,20 @@ teardown() {
     assert_output --partial '&& source ~/.bashrc'
 }
 
+@test "stdin script encapsulation" {
+    run bash -c "$(cosse <<-'eoc'
+        bash -c "echo 123"
+eoc
+)"
+    assert_success
+    assert_output '123'
+    refute_output 'bash'
+    refute_output 'source'
+    refute_output 'base64'
+}
+
 @test "remote ssh full" {
-    run bash -c 'ssh -t localhost "$(cosse --source="'${ASSESTS_DIR}'/source-alias" --source="'${ASSESTS_DIR}'/source-func" --source="'${ASSESTS_DIR}'/source-var" --alias aka_1 --func fn_1 --var "VAR_1" --script "'${ASSESTS_BIN_DIR}'/script_1" --login --interactive "[[ \$- == *i* ]] && echo \"interactive\";aka_1;fn_1;echo \${VAR_1};script_1;exit;")"'
+    run bash -c 'ssh -t localhost "$(cosse --source="'${ASSESTS_DIR}'/source-alias" --source="'${ASSESTS_DIR}'/source-func" --source="'${ASSESTS_DIR}'/source-var" --alias aka_1 --func fn_1 --var "VAR_1" --script "'${ASSESTS_BIN_DIR}'/script_1" --login --interactive "[[ \$- == *i* ]] && echo \"interactive\";aka_1;fn_1;echo \${VAR_1};script_1;" <<< "exit;")"'
 
     assert_success
     assert_output --partial 'interactive'
@@ -204,5 +216,6 @@ teardown() {
     assert_output --partial 'script_1 succeded'
     refute_output --partial 'Warning: '
     assert_output --partial 'Connection to localhost closed.'
-    
+
 }
+
