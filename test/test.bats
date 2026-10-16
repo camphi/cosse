@@ -205,8 +205,15 @@ eoc
     refute_output 'base64'
 }
 
+@test "stdin with -li" {
+    run bash -c 'ssh -t localhost "$(cosse -li <<< "echo Home Sweet Home;exit;")"'
+
+    assert_success
+    assert_output --partial 'Home Sweet Home'
+}
+
 @test "remote ssh full" {
-    run bash -c 'ssh -t localhost "$(cosse --source="'${ASSESTS_DIR}'/source-alias" --source="'${ASSESTS_DIR}'/source-func" --source="'${ASSESTS_DIR}'/source-var" --alias aka_1 --func fn_1 --var "VAR_1" --script "'${ASSESTS_BIN_DIR}'/script_1" --login --interactive "[[ \$- == *i* ]] && echo \"interactive\";aka_1;fn_1;echo \${VAR_1};script_1;" <<< "exit;")"'
+    run bash -c 'ssh -t localhost "$(cosse --source="'${ASSESTS_DIR}'/source-alias" --source="'${ASSESTS_DIR}'/source-func" --source="'${ASSESTS_DIR}'/source-var" --alias aka_1 --func fn_1 --var "VAR_1" --script "'${ASSESTS_BIN_DIR}'/script_1" --login --interactive "aka_1;fn_1;echo \${VAR_1};script_1;exit;" <<< "[[ \$- == *i* ]] && echo \"interactive\"")"'
 
     assert_success
     assert_output --partial 'interactive'

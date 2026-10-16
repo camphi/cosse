@@ -13,6 +13,7 @@ Usage: cosse [options] [--] [command...]
 
 Generates a base64-encoded remote payload to pass local functions,
 environment variables and scripts over SSH. (Bash) (Not safe for secrets)
+Stdin and [command...] are encapsulated to be executed at the end.
 
 Options:
   -s, --source <file>   Source a local file (e.g., ~/.bash_aliases) before exporting.
@@ -34,7 +35,7 @@ Examples:
 
   # Use aliases for repeated operations
   alias sshenv-base="cosse --source='${HOME}/.bash_aliases' --alias={l,ll,la} --func={l-size,field,total,avg,max,min,max-line,min-line,from-iec,to-iec,showargs}"
-  ssh -t user@host "$(sshenv-base -l -i)"
+  ssh -t user@host "$(sshenv-base -li -- echo 'Home Sweet Home')"
 ```
 
 # Test
