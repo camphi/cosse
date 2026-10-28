@@ -21,6 +21,7 @@ Options:
   -f, --func <name>     Export a specific local function by name.
   -v, --var <name>      Export a specific local environment variable by name.
   -x, --script <file>   Transfer a local script to a remote temp dir, and add to $PATH.
+  -e, --extra <file>    Transfer a local file to a remote temp dir. (COSSE_EXTRA)
   -i, --interactive     Force remote bash to spawn an interactive shell.
   -l, --login           Force remote bash to source profile files.
       --debug           Print the decoded payload string for dry-run debugging.
