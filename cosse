@@ -7,6 +7,7 @@ export_aliases=()
 export_funcs=()
 export_vars=()
 export_scripts=()
+export_extras=()
 source_exec='source'
 interactive=0
 login=0
@@ -28,6 +29,7 @@ Options:
   -f, --func <name>     Export a specific local function by name.
   -v, --var <name>      Export a specific local environment variable by name.
   -x, --script <file>   Transfer a local script to a remote temp dir, and add to \$PATH.
+  -e, --extra <file>    Transfer a local file to a remote temp dir. (COSSE_EXTRA)
   -i, --interactive     Force remote bash to spawn an interactive shell.
   -l, --login           Force remote bash to source profile files.
       --debug           Print the decoded payload string for dry-run debugging.
@@ -74,6 +76,10 @@ while (( $# > 0 )); do
         -x=*|--script=*) export_scripts+=("${1#*=}"); shift ;;
         -x|--script) export_scripts+=("$2"); shift 2 ;;
         -x?*) export_scripts+=("${1#-?}"); shift ;;
+        # extra
+        -e=*|--extra=*) export_extras+=("${1#*=}"); shift ;;
+        -e|--extra) export_extras+=("$2"); shift 2 ;;
+        -e?*) export_extras+=("${1#-?}"); shift ;;
         # flags
         -i|--interactive) interactive=1; shift ;;
         -l|--login) login=1; shift ;;
@@ -112,18 +118,17 @@ done
 
 # script list
 if (( ${#export_scripts[@]} > 0 )); then
-    payload+='_remote_tmp=$(mktemp -d /tmp/sshenv.XXXXXX)'$'\n'
-    # payload+='trap '\''rm -rf "$_remote_tmp"'\'' EXIT'$'\n' added later
-    payload+='export PATH="$_remote_tmp:$PATH"'$'\n'
+    payload+='export COSSE_BIN=$(mktemp -d /tmp/cosse.bin.XXXXXX)'$'\n'
+    payload+='export PATH="$COSSE_BIN:$PATH"'$'\n'
 
     for script in "${export_scripts[@]}"; do
         if [[ -r $script ]]; then
             script_name=$(basename -- "$script")
             script_b64=$(base64 -w 0 < "$script")
-            payload+="base64 -d << 'EOF_B64' > \"\$_remote_tmp/${script_name}\""$'\n'
+            payload+="base64 -d << 'EOF_B64' > \"\$COSSE_BIN/${script_name}\""$'\n'
             payload+="${script_b64}"$'\n'
             payload+="EOF_B64"$'\n'
-            payload+="chmod +x \"\$_remote_tmp/${script_name}\""$'\n'
+            payload+="chmod +x \"\$COSSE_BIN/${script_name}\""$'\n'
         else
             printf 'Warning: Script file "%s" not found or unreadable.\n' "$script" >&2
             failure=1
@@ -131,15 +136,36 @@ if (( ${#export_scripts[@]} > 0 )); then
     done
 fi
 
+# extra file list
+if (( ${#export_extras[@]} > 0 )); then
+    payload+='export COSSE_EXTRA=$(mktemp -d /tmp/cosse.extra.XXXXXX)'$'\n'
+
+    for file in "${export_extras[@]}"; do
+        if [[ -r $file ]]; then
+            file_name=$(basename -- "$file")
+            file_b64=$(base64 -w 0 < "$file")
+            payload+="base64 -d << 'EOF_B64' > \"\$COSSE_EXTRA/${file_name}\""$'\n'
+            payload+="${file_b64}"$'\n'
+            payload+="EOF_B64"$'\n'
+        else
+            printf 'Warning: File "%s" not found or unreadable.\n' "$file" >&2
+            failure=1
+        fi
+    done
+fi
+
 # trap logic
-if (( login > 0 )) || (( ${#export_scripts[@]} > 0 )); then
+if (( login > 0 )) || (( ${#export_scripts[@]} > 0 )) || (( ${#export_extras[@]} > 0 )); then
     trap_code='trap '\'
+    if (( ${#export_scripts[@]} > 0 )); then
+        trap_code+='rm -rf "$COSSE_BIN";'
+    fi
+    if (( ${#export_extras[@]} > 0 )); then
+        trap_code+='rm -rf "$COSSE_EXTRA";'
+    fi
     # https://man7.org/linux/man-pages/man1/bash.1.html#INVOCATION
     if (( login > 0 )); then
         trap_code+='[[ -f ~/.bash_logout ]] && source ~/.bash_logout;'
-    fi
-    if (( ${#export_scripts[@]} > 0 )); then
-        trap_code+='rm -rf "$_remote_tmp"'
     fi
     trap_code+=\'' EXIT'
     payload+="$trap_code"$'\n'

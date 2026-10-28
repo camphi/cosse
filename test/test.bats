@@ -11,13 +11,15 @@ setup() {
     # get assets dir
     ASSESTS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" >/dev/null 2>&1 && pwd )/assets"
     ASSESTS_BIN_DIR="${ASSESTS_DIR}/bin"
+    ASSESTS_EXTRA_DIR="${ASSESTS_DIR}/extra"
     bats_require_minimum_version 1.5.0
 }
 
 teardown() {
-    # remove existing /tmp/sshenv.* if script teardown are not trapped correctly
+    # remove existing /tmp/cosse.{bin,extra}.* if script teardown are not trapped correctly
     shopt -s extglob
-    rm -r /tmp/sshenv.+[a-zA-Z0-9]
+    rm -r /tmp/cosse.bin.+[a-zA-Z0-9]
+    rm -r /tmp/cosse.extra.+[a-zA-Z0-9]
     shopt -u extglob
 }
 
@@ -132,15 +134,20 @@ teardown() {
 
 }
 
-@test "deploy and cleanup script in remote ssh" {
-    assert_dir_not_exists /tmp/sshenv.+[a-zA-Z0-9]
+@test "deploy and cleanup script and extra file in remote ssh" {
+    shopt -s extglob
+    assert_dir_not_exists /tmp/cosse.bin.+[a-zA-Z0-9]
+    assert_dir_not_exists /tmp/cosse.extra.+[a-zA-Z0-9]
+    shopt -u extglob
 
-    run bash -c 'ssh localhost "$(cosse --script "'${ASSESTS_BIN_DIR}'/script_1" "script_1")"'
+    run bash -c 'ssh localhost "$(cosse --script "'${ASSESTS_BIN_DIR}'/script_1" --extra "'${ASSESTS_EXTRA_DIR}'/extra_1" -- "script_1; cat \${COSSE_EXTRA}/extra_1;")"'
 
     assert_success
     assert_output --partial 'script_1 succeded'
+    assert_output --partial 'extra_1 succeded'
     shopt -s extglob
-    assert_dir_not_exists /tmp/sshenv.+[a-zA-Z0-9]
+    assert_dir_not_exists /tmp/cosse.bin.+[a-zA-Z0-9]
+    assert_dir_not_exists /tmp/cosse.extra.+[a-zA-Z0-9]
     shopt -u extglob
 
 }
@@ -213,7 +220,7 @@ eoc
 }
 
 @test "remote ssh full" {
-    run bash -c 'ssh -t localhost "$(cosse --source="'${ASSESTS_DIR}'/source-alias" --source="'${ASSESTS_DIR}'/source-func" --source="'${ASSESTS_DIR}'/source-var" --alias aka_1 --func fn_1 --var "VAR_1" --script "'${ASSESTS_BIN_DIR}'/script_1" --login --interactive "aka_1;fn_1;echo \${VAR_1};script_1;exit;" <<< "[[ \$- == *i* ]] && echo \"interactive\"")"'
+    run bash -c 'ssh -t localhost "$(cosse --source="'${ASSESTS_DIR}'/source-alias" --source="'${ASSESTS_DIR}'/source-func" --source="'${ASSESTS_DIR}'/source-var" --alias aka_1 --func fn_1 --var "VAR_1" --script "'${ASSESTS_BIN_DIR}'/script_1" --extra "'${ASSESTS_EXTRA_DIR}'/extra_1" --login --interactive -- "aka_1;fn_1;echo \${VAR_1};script_1;cat \${COSSE_EXTRA}/extra_1;exit;" <<< "[[ \$- == *i* ]] && echo \"interactive\"")"'
 
     assert_success
     assert_output --partial 'interactive'
@@ -221,6 +228,7 @@ eoc
     assert_output --partial 'fn_1 succeded'
     assert_output --partial 'VAR_1 succeded'
     assert_output --partial 'script_1 succeded'
+    assert_output --partial 'extra_1 succeded'
     refute_output --partial 'Warning: '
     assert_output --partial 'Connection to localhost closed.'
 
