@@ -24,6 +24,7 @@ Options:
   -e, --extra <file>    Transfer a local file to a remote temp dir. (COSSE_EXTRA)
   -i, --interactive     Force remote bash to spawn an interactive shell.
   -l, --login           Force remote bash to source profile files.
+  -t, --tmp-dir <dir>   Use {dir}/ instead of /tmp/ for default executable directory.
       --debug           Print the decoded payload string for dry-run debugging.
   -h, --help            Display this help message and exit.
 

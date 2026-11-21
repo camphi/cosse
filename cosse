@@ -12,6 +12,7 @@ source_exec='source'
 interactive=0
 login=0
 debug_opt=0
+tmp_dir=""
 payload=""
 failure=0
 
@@ -32,6 +33,7 @@ Options:
   -e, --extra <file>    Transfer a local file to a remote temp dir. (COSSE_EXTRA)
   -i, --interactive     Force remote bash to spawn an interactive shell.
   -l, --login           Force remote bash to source profile files.
+  -t, --tmp-dir <dir>   Use {dir}/ instead of /tmp/ for default executable directory.
       --debug           Print the decoded payload string for dry-run debugging.
   -h, --help            Display this help message and exit.
 
@@ -58,28 +60,32 @@ while (( $# > 0 )); do
         -h|--help) show_help; exit 0 ;;
         # local sources
         -s=*|--source=*) source_list+=("${1#*=}"); shift ;;
-        -s|--source) source_list+=("$2"); shift 2 ;;
-        -s?*) source_list+=("${1#-?}"); shift ;;
+        -s|--source) source_list+=("$2"); shift 2 || shift ;;
+        -s?*) source_list+=("${1:2}"); shift ;;
         # alias
         -a=*|--alias=*) export_aliases+=("${1#*=}"); shift ;;
-        -a|--alias) export_aliases+=("$2"); shift 2 ;;
-        -a?*) export_aliases+=("${1#-?}"); shift ;;
+        -a|--alias) export_aliases+=("$2"); shift 2 || shift ;;
+        -a?*) export_aliases+=("${1:2}"); shift ;;
         # function
         -f=*|--func=*) export_funcs+=("${1#*=}"); shift ;;
-        -f|--func) export_funcs+=("$2"); shift 2 ;;
-        -f?*) export_funcs+=("${1#-?}"); shift ;;
+        -f|--func) export_funcs+=("$2"); shift 2 || shift ;;
+        -f?*) export_funcs+=("${1:2}"); shift ;;
         # var
         -v=*|--var=*) export_vars+=("${1#*=}"); shift ;;
-        -v|--var) export_vars+=("$2"); shift 2 ;;
-        -v?*) export_vars+=("${1#-?}"); shift ;;
+        -v|--var) export_vars+=("$2"); shift 2 || shift ;;
+        -v?*) export_vars+=("${1:2}"); shift ;;
         # script
         -x=*|--script=*) export_scripts+=("${1#*=}"); shift ;;
-        -x|--script) export_scripts+=("$2"); shift 2 ;;
-        -x?*) export_scripts+=("${1#-?}"); shift ;;
+        -x|--script) export_scripts+=("$2"); shift 2 || shift ;;
+        -x?*) export_scripts+=("${1:2}"); shift ;;
         # extra
         -e=*|--extra=*) export_extras+=("${1#*=}"); shift ;;
-        -e|--extra) export_extras+=("$2"); shift 2 ;;
-        -e?*) export_extras+=("${1#-?}"); shift ;;
+        -e|--extra) export_extras+=("$2"); shift 2 || shift ;;
+        -e?*) export_extras+=("${1:2}"); shift ;;
+        # tmp-dir
+        -t=*|--tmp-dir=*) tmp_dir="${1#*=}"; shift ;;
+        -t|--tmp-dir) tmp_dir="$2"; shift 2 || shift ;;
+        -t?*) tmp_dir="${1:2}"; shift ;;
         # flags
         -i|--interactive) interactive=1; shift ;;
         -l|--login) login=1; shift ;;
@@ -108,7 +114,7 @@ fi
 
 # source list
 for src in "${source_list[@]}"; do
-    if [[ -r $src ]]; then
+    if [[ -r "$src" ]]; then
         source "$src"
     else
         printf 'Warning: Source file "%s" not found or unreadable.\n' "$src" >&2
@@ -116,13 +122,61 @@ for src in "${source_list[@]}"; do
     fi
 done
 
+if (( ${#export_scripts[@]} > 0 )) || (( ${#export_extras[@]} > 0 )); then
+    probe_dir() {
+        local probe="/tmp/exec_probe.$$.bash"
+        local tmp_base=''
+        local candidates=()
+        local dir target
+
+        [[ -n "$1" ]] && candidates+=("$1")
+        candidates+=('/tmp' '/var/tmp' "${HOME:-}/.cache" "${HOME:-}" "$PWD")
+
+        if ! printf '#!/usr/bin/env bash\nexit 0\n' > "$probe" 2>/dev/null; then
+            printf 'Warning: could not create probe in /tmp; falling back to /tmp.\n' >&2
+            printf '%s' '/tmp'
+            return 0
+        fi
+        chmod +x -- "$probe" 2>/dev/null || true
+
+        for dir in "${candidates[@]}"; do
+            dir="${dir%/}"
+            if [[ -z "$dir" || ! -d "$dir" ]]; then
+                continue
+            fi
+
+            target="${dir}/${probe##*/}"
+            if [[ "$probe" != "$target" ]]; then
+                mv -f -- "$probe" "$target" 2>/dev/null || continue
+                probe="$target"
+            fi
+
+            if "$probe" >/dev/null 2>&1; then
+                tmp_base="$dir"
+                break
+            fi
+        done
+        rm -f -- "$probe"
+
+        if [[ -z "$tmp_base" ]]; then
+            printf 'Warning: no executable directory found. Scripts left in /tmp.\n' >&2
+            tmp_base='/tmp'
+        fi
+
+        printf '%s' "$tmp_base"
+    }
+    payload+="$(declare -f 'probe_dir')"$'\n'
+    payload+="export -f probe_dir"$'\n'
+    payload+=$(printf 'export COSSE_TMP_BASE=$(probe_dir %q)' "${tmp_dir:-}")$'\n'
+fi
+
 # script list
 if (( ${#export_scripts[@]} > 0 )); then
-    payload+='export COSSE_BIN=$(mktemp -d /tmp/cosse.bin.XXXXXX)'$'\n'
-    payload+='export PATH="$COSSE_BIN:$PATH"'$'\n'
+    payload+='export COSSE_BIN=$(mktemp -d "${COSSE_TMP_BASE:-/tmp}"/cosse.bin.XXXXXX)'$'\n'
+    payload+='[[ -n "$COSSE_BIN" ]] && export PATH="$COSSE_BIN:$PATH"'$'\n'
 
     for script in "${export_scripts[@]}"; do
-        if [[ -r $script ]]; then
+        if [[ -r "$script" ]]; then
             script_name=$(basename -- "$script")
             script_b64=$(base64 -w 0 < "$script")
             payload+="base64 -d << 'EOF_B64' > \"\$COSSE_BIN/${script_name}\""$'\n'
@@ -138,10 +192,10 @@ fi
 
 # extra file list
 if (( ${#export_extras[@]} > 0 )); then
-    payload+='export COSSE_EXTRA=$(mktemp -d /tmp/cosse.extra.XXXXXX)'$'\n'
+    payload+='export COSSE_EXTRA=$(mktemp -d "${COSSE_TMP_BASE:-/tmp}"/cosse.extra.XXXXXX)'$'\n'
 
     for file in "${export_extras[@]}"; do
-        if [[ -r $file ]]; then
+        if [[ -r "$file" ]]; then
             file_name=$(basename -- "$file")
             file_b64=$(base64 -w 0 < "$file")
             payload+="base64 -d << 'EOF_B64' > \"\$COSSE_EXTRA/${file_name}\""$'\n'
@@ -199,7 +253,7 @@ done
 for var in "${export_vars[@]}"; do
     if [[ -v "$var" ]]; then
         payload+="$(declare -p "$var")"$'\n'
-    else
+    elif [[ -n "$var" ]]; then
         printf 'Warning: Variable "%s" is unset.\n' "$var" >&2
     fi
 done
