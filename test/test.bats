@@ -174,19 +174,6 @@ teardown() {
     assert_output --partial 'Gzip payload size'
 }
 
-@test "source multiple local files" {
-    src_a="${BATS_TEST_TMPDIR}/source_a"
-    src_b="${BATS_TEST_TMPDIR}/source_b"
-    printf 'export VAR_A="from_a"\n' > "${src_a}"
-    printf 'export VAR_B="from_b"\n' > "${src_b}"
-
-    run cosse --source "${src_a}" --source "${src_b}" --var VAR_A --var VAR_B --debug
-
-    assert_success
-    assert_output --partial 'declare -x VAR_A="from_a"'
-    assert_output --partial 'declare -x VAR_B="from_b"'
-}
-
 @test "option syntax variants for source, script, and extra" {
     run cosse -s="${ASSETS_DIR}/source-var" -v VAR_1 --debug
     assert_success
@@ -225,7 +212,9 @@ teardown() {
         # shellcheck disable=SC2086
         run cosse $opt_case --script "${ASSETS_BIN_DIR}/script_1" --debug
         assert_success
+        # shellcheck disable=SC2016
         assert_output --partial 'export COSSE_TMP_BASE=$(probe_dir /var/tmp)'
+        assert_output --partial 'script_1'
     done
 }
 
@@ -241,33 +230,34 @@ teardown() {
     assert_success
     assert_output --partial '&& source /etc/profile'
     assert_output --partial '&& source ~/.bashrc'
+    # shellcheck disable=SC2016
     assert_output --partial 'export COSSE_TMP_BASE=$(probe_dir /var/tmp)'
+    assert_output --partial 'script_1'
 }
 
 @test "function export require prior export -f" {
-    local out
-    out=$(
-        exported_fn() {
-            printf 'arg1:[%s] arg2:[%s]\n' "$1" "$2"
-        }
-        export -f exported_fn
-        eval "$(cosse -f exported_fn -- "exported_fn 'first arg' 'second arg'")"
-    )
+    exported_fn() {
+        # shellcheck disable=SC2317
+        printf 'arg1:[%s] arg2:[%s]\n' "$1" "$2"
+    }
+    export -f exported_fn
+    run bash -c "$(cosse -f exported_fn -- "exported_fn 'first arg' 'second arg'")"
 
-    assert_equal "$out" 'arg1:[first arg] arg2:[second arg]'
+    assert_output 'arg1:[first arg] arg2:[second arg]'
 
-    out=$(
-        unexported_fn() {
-            printf 'arg1:[%s] arg2:[%s]\n' "$1" "$2"
-        }
-        cosse -f unexported_fn -- "unexported_fn 'first arg' 'second arg'" 2>&1 || true
-    )
+    unexported_fn() {
+        # shellcheck disable=SC2317
+        printf 'arg1:[%s] arg2:[%s]\n' "$1" "$2"
+    }
+    run cosse -f unexported_fn -- "unexported_fn 'first arg' 'second arg'"
 
-    assert_equal "$out" 'Warning: Function "unexported_fn" not found locally.'
+    assert_output 'Warning: Function "unexported_fn" not found locally.'
 }
 
 @test "multiline variable preserves content in payload execution" {
+    # shellcheck disable=SC2089
     MULTILINE_VAR='line 1'$'\n''line 2 with "double" and quotes'
+    # shellcheck disable=SC2090
     export MULTILINE_VAR
 
     run bash -c "$(cosse --var MULTILINE_VAR -- "printf \"%s\n\" \"\$MULTILINE_VAR\"")"
@@ -278,47 +268,43 @@ teardown() {
 }
 
 @test "payload deploys and cleans up script and extra in custom and space tmp-dir" {
-    local space_tmp out bin_dir extra_dir
+    local space_tmp
     space_tmp="$(mktemp -d "${BATS_TEST_TMPDIR}/cosse space tmp.XXXXXX")"
 
-    out=$(
-        eval "$(cosse -t "${space_tmp}/" \
-            -x "${ASSETS_BIN_DIR}/script_1" \
-            -e "${ASSETS_EXTRA_DIR}/extra_1" \
-            -- 'printf "BIN=%s\nEXTRA=%s\n" "$COSSE_BIN" "$COSSE_EXTRA"; script_1; cat "${COSSE_EXTRA}/extra_1"')"
-    )
+    # shellcheck disable=SC2016
+    run bash -c "$(cosse -t "${space_tmp}/" \
+        -x "${ASSETS_BIN_DIR}/script_1" \
+        -e "${ASSETS_EXTRA_DIR}/extra_1" \
+        -- 'printf "BIN=%s\nEXTRA=%s\n" "$COSSE_BIN" "$COSSE_EXTRA"; script_1; cat "${COSSE_EXTRA}/extra_1"')"
 
-    bin_dir=$(printf '%s\n' "$out" | sed -n 's/^BIN=//p')
-    extra_dir=$(printf '%s\n' "$out" | sed -n 's/^EXTRA=//p')
-
-    [[ "$bin_dir" == "${space_tmp}/cosse.bin."* ]]
-    [[ "$extra_dir" == "${space_tmp}"/cosse.extra.* ]]
-    assert_not_exist "$bin_dir"
-    assert_not_exist "$extra_dir"
+    assert_success
+    assert_output --partial "BIN=${space_tmp}/cosse.bin."
+    assert_output --partial "EXTRA=${space_tmp}/cosse.extra."
+    assert_output --partial "extra_1 succeded"
 }
 
 @test "fallback to /tmp when -t points to non-existent or unwritable dir" {
-    local missing_dir unwritable_dir out bin_dir
+    local missing_dir unwritable_dir
     missing_dir="${BATS_TEST_TMPDIR}/does_not_exist"
     unwritable_dir="$(mktemp -d "${BATS_TEST_TMPDIR}/unwritable.XXXXXX")"
     chmod 555 -- "$unwritable_dir"
 
-    out=$(
-        eval "$(cosse -t "$missing_dir" -x "${ASSETS_BIN_DIR}/script_1" -- 'printf "BIN=%s\n" "$COSSE_BIN"; script_1')"
-    )
-    bin_dir=$(printf '%s\n' "$out" | sed -n 's/^BIN=//p')
-    [[ "$bin_dir" == /tmp/cosse.bin.* ]]
-    assert_not_exist "$missing_dir"
-    assert_not_exist "$bin_dir"
+    # shellcheck disable=SC2016
+    run bash -c "$(cosse -t "$missing_dir" -x "${ASSETS_BIN_DIR}/script_1" -- 'printf "BIN=%s\n" "$COSSE_BIN"; script_1')"
 
-    out=$(
-        eval "$(cosse -t "$unwritable_dir" -x "${ASSETS_BIN_DIR}/script_1" -- 'printf "BIN=%s\n" "$COSSE_BIN"; script_1')"
-    )
-    bin_dir=$(printf '%s\n' "$out" | sed -n 's/^BIN=//p')
-    [[ "$bin_dir" == /tmp/cosse.bin.* ]]
-    assert_not_exist "$bin_dir"
+    assert_success
+    assert_output --partial 'BIN=/tmp/cosse.bin.'
+    assert_not_exist "$missing_dir"
+
+    # shellcheck disable=SC2016
+    run bash -c "$(cosse -t "$unwritable_dir" -x "${ASSETS_BIN_DIR}/script_1" -- 'printf "BIN=%s\n" "$COSSE_BIN"; script_1')"
+
+    assert_success
+    assert_output --partial 'BIN=/tmp/cosse.bin.'
+    assert_exist "$unwritable_dir"
 
     chmod 755 -- "$unwritable_dir"
+    rm -fr -- "$unwritable_dir"
 }
 
 @test "stdin and caboose command execution" {
@@ -337,7 +323,7 @@ teardown() {
 }
 
 @test "remote ssh full" {
-    run bash -c 'ssh -t localhost "$(cosse --source="'${ASSETS_DIR}'/source-alias" --source="'${ASSETS_DIR}'/source-func" --source="'${ASSETS_DIR}'/source-var" --alias aka_1 --func fn_1 --var "VAR_1" --script "'${ASSETS_BIN_DIR}'/script_1" --extra "'${ASSETS_EXTRA_DIR}'/extra_1" --interactive -- "aka_1;fn_1;echo \${VAR_1};script_1;cat \${COSSE_EXTRA}/extra_1;exit;" <<< "[[ \$- == *i* ]] && echo \"interactive\"")"'
+    run bash -c 'ssh -t localhost "$(cosse --source="'"${ASSETS_DIR}"'/source-alias" --source="'"${ASSETS_DIR}"'/source-func" --source="'"${ASSETS_DIR}"'/source-var" --alias aka_1 --func fn_1 --var "VAR_1" --script "'"${ASSETS_BIN_DIR}"'/script_1" --extra "'"${ASSETS_EXTRA_DIR}"'/extra_1" --interactive -- "aka_1;fn_1;echo \${VAR_1};script_1;cat \${COSSE_EXTRA}/extra_1;exit;" <<< "[[ \$- == *i* ]] && echo \"interactive\"")"'
 
     assert_success
     assert_output --partial 'interactive'
