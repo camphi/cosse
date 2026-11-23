@@ -1,5 +1,5 @@
 # cosse
-Bring your tools to your SSH session
+Bring your bash tools to your SSH session
 
 # Install
 ```
